@@ -50,7 +50,18 @@ const OT=["Genesis","Exodus","Leviticus","Numbers","Deuteronomy","Joshua","Judge
 const NT=["Matthew","Mark","Luke","John","Acts","Romans","1 Corinthians","2 Corinthians","Galatians","Ephesians","Philippians","Colossians","1 Thessalonians","2 Thessalonians","1 Timothy","2 Timothy","Titus","Philemon","Hebrews","James","1 Peter","2 Peter","1 John","2 John","3 John","Jude","Revelation"];
 
 function key(book,ch,v){return `${book}|${ch}|${v}`}
-function getBook(name){return bible.find(b=>b.book===name)}
+function normalizeBookName(name){
+ return String(name||"").toLowerCase().replace(/\\./g,"").replace(/\\s+/g," ").trim()
+}
+function getBook(name){
+ const target=normalizeBookName(name);
+ const aliases={"psalm":"psalms","song of songs":"song of solomon","revelations":"revelation"};
+ const wanted=aliases[target]||target;
+ return bible.find(b=>{
+   const n=normalizeBookName(b.book);
+   return n===wanted || (aliases[n]||n)===wanted;
+ });
+}
 function getVerses(book,ch){let b=getBook(book); if(!b)return []; let c=b.chapters.find(x=>x.chapter==ch); return c?c.verses:[]}
 
 function showReader(){
@@ -119,36 +130,48 @@ function dailyVerse(){
  document.getElementById("app").innerHTML=`<div class="card"><h2>✨ Daily Verse</h2><h3>${x.b} ${x.c}:${x.v}</h3><p style="font-size:20px;line-height:1.7">“${escapeHTML(x.t)}”</p><button class="primary" onclick="openRef('${x.b}',${x.c})">Read Chapter</button></div>`;
 }
 function searchBible(){
- const raw=document.getElementById("searchBox").value.trim();
- const q=raw.toLowerCase();
- if(!q)return;
- let results=[];
-
- // First, recognize Bible references such as Psalm 19:14 or John 3:16.
- const ref=raw.match(/^(.+?)\s+(\d+)(?::(\d+)(?:\s*[-–]\s*(\d+))?)?$/i);
+ const input=document.getElementById("searchBox");
+ const raw=(input?.value||"").trim();
+ if(!raw){input?.focus();return}
+ if(!bible.length){
+   document.getElementById("app").innerHTML=`<div class="card"><h2>🔎 Search</h2><p>The Bible text hasn't loaded yet. Check your internet connection, then try again.</p><button class="primary" onclick="loadBible()">Reload Bible</button></div>`;
+   return;
+ }
+ const results=[];
+ // Accept references such as John 3:16, 1 John 3:16, Psalm 23, and John 3:16-18.
+ const ref=raw.match(/^(.+?)\\s+(\\d+)(?::(\\d+)(?:\\s*[-–]\\s*(\\d+))?)?$/i);
+ let referenceHandled=false;
  if(ref){
-   let requestedBook=ref[1].trim().toLowerCase();
-   if(requestedBook==="psalm") requestedBook="psalms";
-   const book=bible.find(b=>String(b.book).toLowerCase()===requestedBook ||
-     (requestedBook==="psalms" && String(b.book).toLowerCase()==="psalm"));
+   const book=getBook(ref[1]);
    const chapterNumber=Number(ref[2]);
-   const firstVerse=ref[3] ? Number(ref[3]) : null;
-   const lastVerse=ref[4] ? Number(ref[4]) : firstVerse;
+   const firstVerse=ref[3]?Number(ref[3]):null;
+   const lastVerse=ref[4]?Number(ref[4]):firstVerse;
    if(book){
      const chapter=book.chapters.find(c=>Number(c.chapter)===chapterNumber);
      if(chapter){
-       const selected=chapter.verses.filter(v=>firstVerse===null || (Number(v.number)>=firstVerse && Number(v.number)<=lastVerse));
-       results=selected.map(v=>({b:book.book,c:chapterNumber,v:v.number,t:v.text}));
+       const selected=chapter.verses.filter(v=>firstVerse===null ||
+         (Number(v.number)>=firstVerse && Number(v.number)<=lastVerse));
+       if(selected.length){
+         selected.forEach(v=>results.push({b:book.book,c:chapterNumber,v:v.number,t:v.text}));
+         referenceHandled=true;
+       }
      }
    }
- } else {
-   // Otherwise, search words inside the Bible text.
+ }
+ // If the input wasn't a valid reference, search the verse text instead.
+ // Ignore punctuation differences and match all words, not just one exact phrase.
+ if(!referenceHandled){
+   const terms=raw.toLowerCase().replace(/[^\\p{L}\\p{N}\\s]/gu," ").split(/\\s+/).filter(Boolean);
    bible.forEach(b=>b.chapters.forEach(c=>c.verses.forEach(v=>{
-     if(String(v.text).toLowerCase().includes(q))results.push({b:b.book,c:c.chapter,v:v.number,t:v.text});
+     const text=String(v.text||"").toLowerCase();
+     const normalized=text.replace(/[^\\p{L}\\p{N}\\s]/gu," ").replace(/\\s+/g," ");
+     if(terms.length && terms.every(term=>normalized.includes(term))){
+       results.push({b:b.book,c:c.chapter,v:v.number,t:v.text});
+     }
    })));
  }
- results=results.slice(0,100);
- document.getElementById("app").innerHTML=`<div class="card"><h2>🔎 Search Results</h2><p class="muted">${results.length} result(s) shown</p>${results.map(x=>`<div class="verse"><b>${x.b} ${x.c}:${x.v}</b> — ${escapeHTML(x.t)} <button class="small" onclick="openRef('${x.b}',${x.c})">Open</button></div>`).join("")||"<div class='empty'>No verses found. Try a reference such as Psalm 19:14 or search a word from a verse.</div>"}</div>`;
+ const shown=results.slice(0,100);
+ document.getElementById("app").innerHTML=`<div class="card"><h2>🔎 Search Results</h2><p class="muted">${shown.length} result(s) shown${results.length>100?" (first 100)":""}</p>${shown.map(x=>`<div class="verse"><b>${escapeHTML(x.b)} ${x.c}:${x.v}</b> — ${escapeHTML(x.t)} <button class="small" onclick='openRef(${JSON.stringify(x.b)},${x.c})'>Open</button></div>`).join("")||`<div class="empty">No verses found for “${escapeHTML(raw)}”. Try a reference like John 3:16, a book and chapter like Psalm 23, or a word like love.</div>`}<p><button onclick="showReader()">← Back to Reader</button></p></div>`;
 }
 async function shareVerse(b,c,v,t){
  const text=`${b} ${c}:${v} — ${t}`;
@@ -161,12 +184,33 @@ async function loadBible(){
  try{
   const r=await fetch(DATA_URL); if(!r.ok)throw new Error("Could not load Bible data");
   const data=await r.json();
-  bible=data.books||data;
-  // Normalize common source shapes.
-  bible=bible.map(b=>({book:b.book,chapters:(b.chapters||[]).map((c,i)=>({chapter:c.chapter??i+1,verses:(c.verses||[]).map((v,j)=>({number:v.number??j+1,text:v.text??String(v)}))}))}));
+  let rawBooks=data.books||data;
+  if(!Array.isArray(rawBooks) && rawBooks && typeof rawBooks==="object"){
+    rawBooks=Object.entries(rawBooks).map(([name,value])=>({book:name,...(value||{})}));
+  }
+  if(!Array.isArray(rawBooks)) throw new Error("Unexpected Bible data format");
+  bible=rawBooks.map((b,bi)=>{
+    const bookName=b.book||b.name||b.title;
+    let rawChapters=b.chapters||b.chapter||[];
+    if(!Array.isArray(rawChapters) && rawChapters && typeof rawChapters==="object"){
+      rawChapters=Object.entries(rawChapters).map(([chapter,value])=>({chapter,...(Array.isArray(value)?{verses:value}:value)}));
+    }
+    const chapters=(Array.isArray(rawChapters)?rawChapters:[]).map((c,i)=>{
+      let rawVerses=c.verses||c.text||[];
+      if(!Array.isArray(rawVerses) && rawVerses && typeof rawVerses==="object"){
+        rawVerses=Object.entries(rawVerses).map(([number,value])=>({number,text:value}));
+      }
+      return {chapter:Number(c.chapter??c.number??i+1),verses:(Array.isArray(rawVerses)?rawVerses:[]).map((v,j)=>({
+        number:Number(v.number??v.verse??j+1),text:String(v.text??v.verse_text??v.content??v)
+      }))};
+    });
+    return {book:String(bookName||""),chapters};
+  }).filter(b=>b.book && b.chapters.length);
+  if(!bible.length) throw new Error("No Bible books found in the data");
   showReader();
  }catch(e){
-  document.getElementById("app").innerHTML=`<div class="card"><h2>Could not load Bible data</h2><p>Please connect to the internet and refresh. The app uses a public-domain KJV dataset hosted on GitHub.</p><button class="primary" onclick="loadBible()">Try Again</button></div>`;
+  console.error("FaithVerse Bible load error:",e);
+  document.getElementById("app").innerHTML=`<div class="card"><h2>Could not load Bible data</h2><p>The Bible dataset could not be loaded or had an unexpected format. Check your internet connection and try again. If you opened this file directly, try running it with VS Code Live Server.</p><p class="muted">Details: ${escapeHTML(e.message||"Unknown error")}</p><button class="primary" onclick="loadBible()">Try Again</button></div>`;
  }
 }
 if(localStorage.dark==="1")document.body.classList.add("dark");
