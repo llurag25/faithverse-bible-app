@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FaithVerse Bible App</title>
+<style>
+:root{--bg:#f7f3ec;--card:#fff;--text:#2c241c;--muted:#756b60;--accent:#8b5e34;--accent2:#d9b382;--border:#e8ded2}
+*{box-sizing:border-box} body{margin:0;font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:var(--bg);color:var(--text)}
+header{background:linear-gradient(135deg,#6d4728,#a97846);color:white;padding:28px 18px}
+header .wrap{max-width:1100px;margin:auto} h1{margin:0 0 5px;font-size:30px}.subtitle{opacity:.9}
+nav{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--border);padding:10px}
+.navwrap{max-width:1100px;margin:auto;display:flex;gap:8px;flex-wrap:wrap}
+button,select,input{font:inherit} button,.select,input{border:1px solid var(--border);background:var(--card);padding:10px 13px;border-radius:10px;color:var(--text)}
+button{cursor:pointer}.primary{background:var(--accent);color:white;border-color:var(--accent)}button:hover{filter:brightness(.97)}
+main{max-width:1100px;margin:22px auto;padding:0 16px}.toolbar{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:15px}
+.search{display:flex;gap:8px;margin-bottom:18px}.search input{flex:1}
+.grid{display:grid;grid-template-columns:2fr 1fr;gap:18px}.card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:18px;box-shadow:0 4px 16px #00000008}
+.verse{padding:13px 0;border-bottom:1px solid var(--border);line-height:1.65}.verse:last-child{border:0}
+.vnum{color:var(--accent);font-weight:700;margin-right:7px}.actions{float:right;display:flex;gap:5px}.small{font-size:13px;padding:6px 8px}.muted{color:var(--muted)}
+.side h3{margin-top:0}.pill{display:inline-block;background:#f0e3d3;padding:6px 9px;border-radius:999px;margin:3px;font-size:13px}
+.tabs{display:flex;gap:8px;margin-bottom:12px}.tabs button.active{background:var(--accent);color:white}
+.empty{padding:35px;text-align:center;color:var(--muted)}
+footer{text-align:center;padding:30px;color:var(--muted)}
+body.dark{--bg:#171411;--card:#211d19;--text:#f4eadf;--muted:#b9aa9b;--border:#3b332c;--accent:#c28a55;--accent2:#7e5938}
+@media(max-width:760px){.toolbar,.grid{grid-template-columns:1fr}.actions{float:none;display:block;margin-top:8px}}
+</style>
+</head>
+<body>
+<header><div class="wrap"><h1>📖 FaithVerse Bible</h1><div class="subtitle">Complete King James Version — Old Testament & New Testament</div></div></header>
+
+<nav><div class="navwrap">
+<button class="primary" onclick="showReader()">📖 Reader</button>
+<button onclick="showFavorites()">⭐ Favorites</button>
+<button onclick="showNotes()">📝 Notes</button>
+<button onclick="dailyVerse()">✨ Daily Verse</button>
+<button onclick="toggleDark()">🌙 Theme</button>
+</div></nav>
+
+<main>
+<div id="app"></div>
+</main>
+<footer>FaithVerse Bible • KJV public-domain text • Personal study app</footer>
+
+<script>
+const DATA_URL="https://raw.githubusercontent.com/midvash/bible-data/main/versions/en/kjv/kjv.json";
+let bible=[], currentBook=null, currentChapter=1, testament="OT";
+
+const OT=["Genesis","Exodus","Leviticus","Numbers","Deuteronomy","Joshua","Judges","Ruth","1 Samuel","2 Samuel","1 Kings","2 Kings","1 Chronicles","2 Chronicles","Ezra","Nehemiah","Esther","Job","Psalms","Proverbs","Ecclesiastes","Song of Solomon","Isaiah","Jeremiah","Lamentations","Ezekiel","Daniel","Hosea","Joel","Amos","Obadiah","Jonah","Micah","Nahum","Habakkuk","Zephaniah","Haggai","Zechariah","Malachi"];
+const NT=["Matthew","Mark","Luke","John","Acts","Romans","1 Corinthians","2 Corinthians","Galatians","Ephesians","Philippians","Colossians","1 Thessalonians","2 Thessalonians","1 Timothy","2 Timothy","Titus","Philemon","Hebrews","James","1 Peter","2 Peter","1 John","2 John","3 John","Jude","Revelation"];
+
+function key(book,ch,v){return `${book}|${ch}|${v}`}
+function getBook(name){return bible.find(b=>b.book===name)}
+function getVerses(book,ch){let b=getBook(book); if(!b)return []; let c=b.chapters.find(x=>x.chapter==ch); return c?c.verses:[]}
+
+function showReader(){
+ document.getElementById("app").innerHTML=`
+ <div class="search"><input id="searchBox" placeholder="Search the Bible..." onkeydown="if(event.key==='Enter')searchBible()"><button class="primary" onclick="searchBible()">Search</button></div>
+ <div class="toolbar">
+   <select id="testament" onchange="changeTestament(this.value)"><option value="OT">Old Testament</option><option value="NT">New Testament</option></select>
+   <select id="book" onchange="changeBook(this.value)"></select>
+   <select id="chapter" onchange="changeChapter(this.value)"></select>
+ </div>
+ <div class="grid"><section class="card"><div id="reader"></div></section><aside class="card side"><h3>Study Tools</h3>
+ <div class="pill">⭐ Favorites</div><div class="pill">📝 Notes</div><div class="pill">🔎 Search</div><div class="pill">🌙 Dark mode</div>
+ <p class="muted">Tip: Tap ⭐ on a verse to save it. Notes and favorites stay in this browser.</p>
+ </aside></div>`;
+ fillBooks(); renderChapter();
+}
+
+function fillBooks(){
+ const sel=document.getElementById("book"); if(!sel)return;
+ const names=(testament==="OT"?OT:NT).filter(n=>getBook(n));
+ sel.innerHTML=names.map(n=>`<option>${n}</option>`).join("");
+ if(currentBook && names.includes(currentBook))sel.value=currentBook; else currentBook=names[0],sel.value=currentBook;
+ fillChapters();
+}
+function fillChapters(){
+ const sel=document.getElementById("chapter"), b=getBook(currentBook); if(!sel||!b)return;
+ sel.innerHTML=b.chapters.map(c=>`<option value="${c.chapter}">Chapter ${c.chapter}</option>`).join("");
+ sel.value=currentChapter=Math.min(currentChapter,b.chapters.length);
+}
+function changeTestament(v){testament=v;currentBook=null;currentChapter=1;fillBooks();renderChapter()}
+function changeBook(v){currentBook=v;currentChapter=1;fillChapters();renderChapter()}
+function changeChapter(v){currentChapter=+v;renderChapter()}
+
+function renderChapter(){
+ const box=document.getElementById("reader"); if(!box)return;
+ const verses=getVerses(currentBook,currentChapter);
+ box.innerHTML=`<h2>${currentBook} ${currentChapter}</h2>`+verses.map(v=>`
+ <div class="verse"><span class="vnum">${v.number}</span>${escapeHTML(v.text)}
+ <span class="actions">
+ <button class="small" onclick='toggleFav(${JSON.stringify(key(currentBook,currentChapter,v.number))})'>⭐</button>
+ <button class="small" onclick='addNote(${JSON.stringify(key(currentBook,currentChapter,v.number))})'>📝</button>
+ <button class="small" onclick='shareVerse(${JSON.stringify(currentBook)},${currentChapter},${v.number},${JSON.stringify(v.text)})'>↗</button>
+ </span></div>`).join("");
+}
+function escapeHTML(s){return s.replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
+
+function toggleFav(k){
+ let a=JSON.parse(localStorage.favs||"[]"); a=a.includes(k)?a.filter(x=>x!==k):[...a,k];localStorage.favs=JSON.stringify(a);alert(a.includes(k)?"Added to favorites":"Removed from favorites")
+}
+function addNote(k){
+ const old=JSON.parse(localStorage.notes||"{}"); const n=prompt("Write your note:",old[k]||""); if(n===null)return;
+ if(n.trim())old[k]=n;else delete old[k];localStorage.notes=JSON.stringify(old);alert("Note saved.")
+}
+function showFavorites(){
+ const a=JSON.parse(localStorage.favs||"[]");
+ document.getElementById("app").innerHTML=`<div class="card"><h2>⭐ Favorites</h2>${a.length?a.map(k=>{let [b,c,v]=k.split("|");let x=getVerses(b,+c).find(z=>z.number==v);return x?`<div class="verse"><b>${b} ${c}:${v}</b> — ${escapeHTML(x.text)} <button class="small" onclick="openRef('${b}',${c})">Open</button></div>`:""}).join(""):"<div class='empty'>No favorite verses yet.</div>"}</div>`;
+}
+function showNotes(){
+ const notes=JSON.parse(localStorage.notes||"{}"), ks=Object.keys(notes);
+ document.getElementById("app").innerHTML=`<div class="card"><h2>📝 My Notes</h2>${ks.length?ks.map(k=>`<div class="verse"><b>${k.replaceAll("|",":")}</b><p>${escapeHTML(notes[k])}</p></div>`).join(""):"<div class='empty'>No notes yet.</div>"}</div>`;
+}
+function openRef(b,c){testament=OT.includes(b)?"OT":"NT";currentBook=b;currentChapter=+c;showReader();document.getElementById("book").value=b;document.getElementById("chapter").value=c;renderChapter()}
+function dailyVerse(){
+ const all=[]; bible.forEach(b=>b.chapters.forEach(c=>c.verses.forEach(v=>all.push({b:b.book,c:c.chapter,v:v.number,t:v.text}))));
+ const d=new Date(), i=(d.getFullYear()*10000+(d.getMonth()+1)*100+d.getDate())%all.length, x=all[i];
+ document.getElementById("app").innerHTML=`<div class="card"><h2>✨ Daily Verse</h2><h3>${x.b} ${x.c}:${x.v}</h3><p style="font-size:20px;line-height:1.7">“${escapeHTML(x.t)}”</p><button class="primary" onclick="openRef('${x.b}',${x.c})">Read Chapter</button></div>`;
+}
+function searchBible(){
+ const q=document.getElementById("searchBox").value.trim().toLowerCase(); if(!q)return;
+ let results=[]; bible.forEach(b=>b.chapters.forEach(c=>c.verses.forEach(v=>{if(v.text.toLowerCase().includes(q))results.push({b:b.book,c:c.chapter,v:v.number,t:v.text})})));
+ results=results.slice(0,100);
+ document.getElementById("app").innerHTML=`<div class="card"><h2>🔎 Search Results</h2><p class="muted">${results.length} result(s) shown</p>${results.map(x=>`<div class="verse"><b>${x.b} ${x.c}:${x.v}</b> — ${escapeHTML(x.t)} <button class="small" onclick="openRef('${x.b}',${x.c})">Open</button></div>`).join("")||"<div class='empty'>No verses found.</div>"}</div>`;
+}
+async function shareVerse(b,c,v,t){
+ const text=`${b} ${c}:${v} — ${t}`;
+ if(navigator.share) await navigator.share({title:"Bible Verse",text}); else {await navigator.clipboard.writeText(text);alert("Verse copied!")}
+}
+function toggleDark(){document.body.classList.toggle("dark");localStorage.dark=document.body.classList.contains("dark")?"1":"0"}
+
+async function loadBible(){
+ document.getElementById("app").innerHTML=`<div class="card empty"><h2>Loading Bible…</h2><p>Loading the complete KJV: 66 books, 1,189 chapters, 31,102 verses.</p></div>`;
+ try{
+  const r=await fetch(DATA_URL); if(!r.ok)throw new Error("Could not load Bible data");
+  const data=await r.json();
+  bible=data.books||data;
+  // Normalize common source shapes.
+  bible=bible.map(b=>({book:b.book,chapters:(b.chapters||[]).map((c,i)=>({chapter:c.chapter??i+1,verses:(c.verses||[]).map((v,j)=>({number:v.number??j+1,text:v.text??String(v)}))}))}));
+  showReader();
+ }catch(e){
+  document.getElementById("app").innerHTML=`<div class="card"><h2>Could not load Bible data</h2><p>Please connect to the internet and refresh. The app uses a public-domain KJV dataset hosted on GitHub.</p><button class="primary" onclick="loadBible()">Try Again</button></div>`;
+ }
+}
+if(localStorage.dark==="1")document.body.classList.add("dark");
+loadBible();
+</script>
+</body>
+</html>
