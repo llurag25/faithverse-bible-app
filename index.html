@@ -119,10 +119,36 @@ function dailyVerse(){
  document.getElementById("app").innerHTML=`<div class="card"><h2>✨ Daily Verse</h2><h3>${x.b} ${x.c}:${x.v}</h3><p style="font-size:20px;line-height:1.7">“${escapeHTML(x.t)}”</p><button class="primary" onclick="openRef('${x.b}',${x.c})">Read Chapter</button></div>`;
 }
 function searchBible(){
- const q=document.getElementById("searchBox").value.trim().toLowerCase(); if(!q)return;
- let results=[]; bible.forEach(b=>b.chapters.forEach(c=>c.verses.forEach(v=>{if(v.text.toLowerCase().includes(q))results.push({b:b.book,c:c.chapter,v:v.number,t:v.text})})));
+ const raw=document.getElementById("searchBox").value.trim();
+ const q=raw.toLowerCase();
+ if(!q)return;
+ let results=[];
+
+ // First, recognize Bible references such as Psalm 19:14 or John 3:16.
+ const ref=raw.match(/^(.+?)\s+(\d+)(?::(\d+)(?:\s*[-–]\s*(\d+))?)?$/i);
+ if(ref){
+   let requestedBook=ref[1].trim().toLowerCase();
+   if(requestedBook==="psalm") requestedBook="psalms";
+   const book=bible.find(b=>String(b.book).toLowerCase()===requestedBook ||
+     (requestedBook==="psalms" && String(b.book).toLowerCase()==="psalm"));
+   const chapterNumber=Number(ref[2]);
+   const firstVerse=ref[3] ? Number(ref[3]) : null;
+   const lastVerse=ref[4] ? Number(ref[4]) : firstVerse;
+   if(book){
+     const chapter=book.chapters.find(c=>Number(c.chapter)===chapterNumber);
+     if(chapter){
+       const selected=chapter.verses.filter(v=>firstVerse===null || (Number(v.number)>=firstVerse && Number(v.number)<=lastVerse));
+       results=selected.map(v=>({b:book.book,c:chapterNumber,v:v.number,t:v.text}));
+     }
+   }
+ } else {
+   // Otherwise, search words inside the Bible text.
+   bible.forEach(b=>b.chapters.forEach(c=>c.verses.forEach(v=>{
+     if(String(v.text).toLowerCase().includes(q))results.push({b:b.book,c:c.chapter,v:v.number,t:v.text});
+   })));
+ }
  results=results.slice(0,100);
- document.getElementById("app").innerHTML=`<div class="card"><h2>🔎 Search Results</h2><p class="muted">${results.length} result(s) shown</p>${results.map(x=>`<div class="verse"><b>${x.b} ${x.c}:${x.v}</b> — ${escapeHTML(x.t)} <button class="small" onclick="openRef('${x.b}',${x.c})">Open</button></div>`).join("")||"<div class='empty'>No verses found.</div>"}</div>`;
+ document.getElementById("app").innerHTML=`<div class="card"><h2>🔎 Search Results</h2><p class="muted">${results.length} result(s) shown</p>${results.map(x=>`<div class="verse"><b>${x.b} ${x.c}:${x.v}</b> — ${escapeHTML(x.t)} <button class="small" onclick="openRef('${x.b}',${x.c})">Open</button></div>`).join("")||"<div class='empty'>No verses found. Try a reference such as Psalm 19:14 or search a word from a verse.</div>"}</div>`;
 }
 async function shareVerse(b,c,v,t){
  const text=`${b} ${c}:${v} — ${t}`;
