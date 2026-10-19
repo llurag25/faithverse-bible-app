@@ -36,3 +36,7 @@ For VS Code, you can also use the Live Server extension.
 
 ## Important
 This project uses the King James Version because it is public domain. The app is for Bible reading/study and is not affiliated with any church or Bible publisher.
+
+
+## Search fix
+The search function recognizes Bible references such as `Psalm 19:14`, `Psalms 19:14`, and `John 3:16`, as well as word searches. The full Bible text still requires an internet connection to load from the configured data source.
