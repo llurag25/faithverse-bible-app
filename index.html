@@ -190,7 +190,9 @@ async function loadBible(){
   }
   if(!Array.isArray(rawBooks)) throw new Error("Unexpected Bible data format");
   bible=rawBooks.map((b,bi)=>{
-    const bookName=b.book||b.name||b.title;
+    // Dataset uses OSIS codes in `book` (e.g. Ps, 1Sam, 1John)
+    // and human-readable names in `englishName`; use the latter in the UI.
+    const bookName=b.englishName||b.name||b.title||b.book;
     let rawChapters=b.chapters||b.chapter||[];
     if(!Array.isArray(rawChapters) && rawChapters && typeof rawChapters==="object"){
       rawChapters=Object.entries(rawChapters).map(([chapter,value])=>({chapter,...(Array.isArray(value)?{verses:value}:value)}));
